@@ -41,6 +41,19 @@ groups:
             / sum(rate(http_request_duration_seconds_count{route="/{code}"}[1h]))
           )
 
+      - record: sli:redirect_slow:ratio_rate30m
+        expr: |
+          1 - (
+            sum(rate(http_request_duration_seconds_bucket{route="/{code}",le="0.1"}[30m]))
+            / sum(rate(http_request_duration_seconds_count{route="/{code}"}[30m]))
+          )
+      - record: sli:redirect_slow:ratio_rate6h
+        expr: |
+          1 - (
+            sum(rate(http_request_duration_seconds_bucket{route="/{code}",le="0.1"}[6h]))
+            / sum(rate(http_request_duration_seconds_count{route="/{code}"}[6h]))
+          )
+
       - record: sli:redirect_latency:p99_5m
         expr: histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{route="/{code}"}[5m])))
 
@@ -74,6 +87,32 @@ groups:
         annotations:
           summary: Too many redirects slower than 100 ms
           runbook: docs/runbook.md#redirectlatencybudgetfastburn
+
+      - alert: RedirectLatencyBudgetSlowBurn
+        expr: |
+          sli:redirect_slow:ratio_rate6h > (6 * 0.01)
+          and sli:redirect_slow:ratio_rate30m > (6 * 0.01)
+        labels: {severity: ticket}
+        annotations:
+          summary: Latency error budget is burning steadily
+          runbook: docs/runbook.md#redirectlatencybudgetslowburn
+
+      # Burn-rate ratios are NaN with zero traffic, so a total outage would be silent.
+      # These two catch "nothing is answering" and "nothing is even being scraped".
+      - alert: SurgeLinksTargetDown
+        expr: up{job="surge-links"} == 0
+        for: 1m
+        labels: {severity: page}
+        annotations:
+          summary: Prometheus cannot scrape a surge-links instance
+          runbook: docs/runbook.md#surgelinkstargetdown
+      - alert: SurgeLinksAbsent
+        expr: absent(up{job="surge-links"})
+        for: 2m
+        labels: {severity: page}
+        annotations:
+          summary: No surge-links targets are being scraped at all
+          runbook: docs/runbook.md#surgelinkstargetdown
 
       - alert: ClickFlushFailing
         expr: increase(click_flush_errors_total[5m]) > 0 and click_buffer_keys > 0

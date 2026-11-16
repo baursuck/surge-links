@@ -10,7 +10,9 @@ RDS max_connections (prod, set in Terraform) = 300   -> ~30% headroom
 ```
 
 `db.t4g.medium` (4 GiB) is chosen for prod because each Postgres connection costs memory;
-300 connections on a 2 GiB instance would leave little for shared buffers.
+300 connections on a 2 GiB instance would leave little for shared buffers. Dev runs on
+`db.t4g.micro` (1 GiB) with `max_connections = 100`, so dev must keep `maxReplicas` at 5 or less
+(5 x 10 + headroom).
 
 ## Why the pool is small (5 + 5)
 

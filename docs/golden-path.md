@@ -15,16 +15,21 @@ module "my_service" {
 Open a PR. CI runs `fmt`, `validate`, `tflint`, a security scan and the module's tests.
 Production gets Multi-AZ, deletion protection and 14 days of backups without anyone asking.
 
-**2. Secret.** Map the RDS secret (`db_secret_arn` output) to a Kubernetes Secret named
-`<service>-db` with key `DATABASE_URL` (External Secrets Operator in a real cluster).
+**2. Database user (once).** Run `scripts/db-bootstrap.sql` with the master credentials from
+Secrets Manager (`db_secret_arn` output). It creates `app_user`, which logs in with IAM tokens,
+so there is no app password to store or rotate. Create the `<service>-api` Secret with the
+API key (External Secrets in a real cluster).
 
 **3. Deploy.**
 
 ```bash
 helm upgrade --install my-service deploy/helm/surge-links \
   --set image.repository=ghcr.io/org/my-service \
-  --set serviceAccount.roleArn=<app_role_arn output>
+  --set database.url=postgresql+asyncpg://app_user@<db_endpoint>/<db_name> \
+  --set serviceAccount.roleArn=<app_role_arn> \
+  --set securityGroupPolicy.enabled=true \
+  --set securityGroupPolicy.securityGroupIds={<app_security_group_id>}
 ```
 
-Migrations run as a pre-upgrade hook, the HPA is already tuned for spikes, and the service
+The chart refuses to render without a database setting. Migrations run as a pre-upgrade hook, the HPA is already tuned for spikes, and the service
 exposes `/metrics` with the same metric names, so the SLO rules and the dashboard work unchanged.

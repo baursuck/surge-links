@@ -20,11 +20,20 @@ Multi-window, multi-burn-rate alerts (Google SRE workbook, ch. 5), rules in
 | `RedirectErrorBudgetFastBurn` | 1h and 5m error ratio > 14.4 x 0.1% | 2% of the monthly budget gone in an hour | page |
 | `RedirectErrorBudgetSlowBurn` | 6h and 30m error ratio > 6 x 0.1% | 5% of the budget in 6 hours | ticket |
 | `RedirectLatencyBudgetFastBurn` | 1h and 5m slow ratio > 14.4 x 1% | latency SLO burning fast | page |
+| `RedirectLatencyBudgetSlowBurn` | 6h and 30m slow ratio > 6 x 1% | latency budget burning steadily | ticket |
+| `SurgeLinksTargetDown` / `SurgeLinksAbsent` | `up == 0` or no targets at all | nothing answers, burn-rate ratios are NaN and silent | page |
 | `ClickFlushFailing` | flush errors while clicks are buffered | stats are not being saved | page |
 | `DbPoolSaturated` | a pod uses > 90% of its pool for 5 min | close to connection exhaustion | ticket |
 
 The short window stops the alert quickly once the problem is fixed; the long one avoids paging
 on a short blip.
+
+Where 14.4 and 6 come from: budget for 30 days = 0.1%. Burning 2% of it in 1 hour means
+`0.02 x 720 h / 1 h = 14.4` times the allowed rate; 5% in 6 hours means `0.05 x 720 / 6 = 6`.
+
+At zero traffic the ratios divide 0 by 0 and every burn-rate alert goes quiet; that is why
+`SurgeLinksTargetDown` / `SurgeLinksAbsent` exist. In production the alerts go to Alertmanager
+(page → on-call, ticket → team channel); the local stack evaluates rules but has no Alertmanager.
 
 ## Why these numbers
 

@@ -7,7 +7,8 @@ Each alert links here. First question every time: **is a campaign running right 
 5xx on redirects.
 1. Grafana → "Requests by route and status": which status code? Loki panel: which error?
 2. `kubectl get pods`: are pods restarting (OOM, failed liveness)?
-3. `/readyz` failing everywhere → database. Check RDS CPU, connections, Performance Insights.
+3. `/readyz` shows `"db": "unavailable"` → database. Pods stay in rotation on purpose and keep
+   serving cached links; cold codes return 503. Check RDS CPU, connections, Performance Insights.
 4. Started right after a deploy → `helm rollback surge-links`.
 
 ## RedirectErrorBudgetSlowBurn
@@ -17,6 +18,14 @@ Same checks without urgency; open a ticket with the graphs attached.
 1. Cache hit ratio dropped? A new campaign with many cold links → misses go to Postgres.
 2. CPU throttling or pods at the HPA maximum → raise `maxReplicas` (check docs/capacity.md first).
 3. Slow queries: Postgres logs everything over 250 ms (`log_min_duration_statement`).
+
+## RedirectLatencyBudgetSlowBurn
+Same checks as the fast burn, during work hours: cache hit ratio, slow query log, HPA at maximum.
+
+## SurgeLinksTargetDown
+1. `kubectl get pods`: CrashLoopBackOff? `kubectl logs --previous` shows why.
+2. All pods fine but no scrape → ServiceMonitor or network policy changed.
+3. Nothing at all → check the last deploy (`helm history surge-links`) and roll back.
 
 ## ClickFlushFailing
 Clicks are piling up in pod memory. Redirects still work, but a pod restart loses buffered clicks.

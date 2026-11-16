@@ -57,7 +57,10 @@ jobs:
             echo "::endgroup::"
           done
       - uses: terraform-linters/setup-tflint@ae78205cfffec9e8d93fd2b3115c7e9d3166d4b6 # v5
-      - run: tflint --init --config "$PWD/.tflint.hcl" && tflint --recursive --config "$PWD/.tflint.hcl"
+      - name: tflint
+        env:
+          GITHUB_TOKEN: ${{ github.token }}  # plugin download; anonymous GitHub API calls get rate-limited
+        run: tflint --init --config "$PWD/.tflint.hcl" && tflint --recursive --config "$PWD/.tflint.hcl"
       - name: security scan (trivy config)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:

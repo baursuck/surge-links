@@ -1,0 +1,37 @@
+image:
+  repository: ghcr.io/baursuck/surge-links
+  tag: ""            # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+
+# Real DATABASE_URL comes from a Secret (e.g. synced from Secrets Manager by External Secrets).
+database:
+  existingSecret: surge-links-db
+  secretKey: DATABASE_URL
+
+config:
+  PUBLIC_BASE_URL: https://go.example.com
+  DB_POOL_SIZE: "5"
+  DB_MAX_OVERFLOW: "5"
+  CLICK_FLUSH_INTERVAL_SECONDS: "1"
+  LOG_LEVEL: INFO
+
+serviceAccount:
+  # IRSA: put the role ARN from the Terraform output `app_role_arn` here.
+  roleArn: ""
+
+resources:
+  requests: {cpu: 250m, memory: 128Mi}
+  limits: {memory: 256Mi}   # no CPU limit: throttling hurts p99 more than it saves
+
+# Spike profile: scale up immediately and aggressively, scale down slowly.
+# maxReplicas x (DB_POOL_SIZE + DB_MAX_OVERFLOW) must fit RDS max_connections (docs/capacity.md).
+autoscaling:
+  minReplicas: 3
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 60
+
+migrations:
+  enabled: true
+
+service:
+  port: 80

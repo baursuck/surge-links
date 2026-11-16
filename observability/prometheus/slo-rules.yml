@@ -1,0 +1,92 @@
+# SLOs for the redirect path (what users and ad networks actually hit). See docs/slo.md.
+#   Availability: 99.9% of redirects are not 5xx over 30 days.
+#   Latency:      99% of redirects are served in under 100 ms over 30 days.
+# Alerting uses multi-window, multi-burn-rate rules (Google SRE workbook, chapter 5).
+
+groups:
+  - name: surge-links-sli
+    rules:
+      - record: sli:redirect_requests:rate5m
+        expr: sum(rate(http_requests_total{route="/{code}"}[5m]))
+
+      # Error ratio over several windows; 404/410 are correct answers, only 5xx count.
+      - record: sli:redirect_errors:ratio_rate5m
+        expr: |
+          sum(rate(http_requests_total{route="/{code}",status=~"5.."}[5m]))
+          / sum(rate(http_requests_total{route="/{code}"}[5m]))
+      - record: sli:redirect_errors:ratio_rate30m
+        expr: |
+          sum(rate(http_requests_total{route="/{code}",status=~"5.."}[30m]))
+          / sum(rate(http_requests_total{route="/{code}"}[30m]))
+      - record: sli:redirect_errors:ratio_rate1h
+        expr: |
+          sum(rate(http_requests_total{route="/{code}",status=~"5.."}[1h]))
+          / sum(rate(http_requests_total{route="/{code}"}[1h]))
+      - record: sli:redirect_errors:ratio_rate6h
+        expr: |
+          sum(rate(http_requests_total{route="/{code}",status=~"5.."}[6h]))
+          / sum(rate(http_requests_total{route="/{code}"}[6h]))
+
+      # Share of redirects slower than 100 ms.
+      - record: sli:redirect_slow:ratio_rate5m
+        expr: |
+          1 - (
+            sum(rate(http_request_duration_seconds_bucket{route="/{code}",le="0.1"}[5m]))
+            / sum(rate(http_request_duration_seconds_count{route="/{code}"}[5m]))
+          )
+      - record: sli:redirect_slow:ratio_rate1h
+        expr: |
+          1 - (
+            sum(rate(http_request_duration_seconds_bucket{route="/{code}",le="0.1"}[1h]))
+            / sum(rate(http_request_duration_seconds_count{route="/{code}"}[1h]))
+          )
+
+      - record: sli:redirect_latency:p99_5m
+        expr: histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{route="/{code}"}[5m])))
+
+  - name: surge-links-alerts
+    rules:
+      # 14.4x burn = 2% of the 30-day budget in 1 hour -> wake someone up.
+      - alert: RedirectErrorBudgetFastBurn
+        expr: |
+          sli:redirect_errors:ratio_rate1h > (14.4 * 0.001)
+          and sli:redirect_errors:ratio_rate5m > (14.4 * 0.001)
+        labels: {severity: page}
+        annotations:
+          summary: Redirects are burning the error budget 14x faster than allowed
+          runbook: docs/runbook.md#redirecterrorbudgetfastburn
+
+      # 6x burn = 5% of the budget in 6 hours -> ticket, fix during work hours.
+      - alert: RedirectErrorBudgetSlowBurn
+        expr: |
+          sli:redirect_errors:ratio_rate6h > (6 * 0.001)
+          and sli:redirect_errors:ratio_rate30m > (6 * 0.001)
+        labels: {severity: ticket}
+        annotations:
+          summary: Redirect error budget is burning steadily
+          runbook: docs/runbook.md#redirecterrorbudgetslowburn
+
+      - alert: RedirectLatencyBudgetFastBurn
+        expr: |
+          sli:redirect_slow:ratio_rate1h > (14.4 * 0.01)
+          and sli:redirect_slow:ratio_rate5m > (14.4 * 0.01)
+        labels: {severity: page}
+        annotations:
+          summary: Too many redirects slower than 100 ms
+          runbook: docs/runbook.md#redirectlatencybudgetfastburn
+
+      - alert: ClickFlushFailing
+        expr: increase(click_flush_errors_total[5m]) > 0 and click_buffer_keys > 0
+        for: 2m
+        labels: {severity: page}
+        annotations:
+          summary: Clicks are piling up in memory and not reaching Postgres
+          runbook: docs/runbook.md#clickflushfailing
+
+      - alert: DbPoolSaturated
+        expr: max(db_pool_checked_out / db_pool_size) > 0.9
+        for: 5m
+        labels: {severity: ticket}
+        annotations:
+          summary: DB connection pool is above 90% on at least one pod
+          runbook: docs/runbook.md#dbpoolsaturated

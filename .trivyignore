@@ -1,0 +1,3 @@
+# Accepted for this demo, see docs/tradeoffs.md:
+# AVD-AWS-0178  VPC flow logs are not enabled (cost); would be on in a real platform.
+AVD-AWS-0178

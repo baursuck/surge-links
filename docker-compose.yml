@@ -1,0 +1,87 @@
+name: surge-links
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: surge
+      POSTGRES_PASSWORD: surge
+      POSTGRES_DB: surge
+    command: ["postgres", "-c", "max_connections=100", "-c", "log_min_duration_statement=250"]
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U surge"]
+      interval: 2s
+      retries: 30
+    volumes: [pgdata:/var/lib/postgresql/data]
+
+  migrate:
+    build: .
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://surge:surge@postgres:5432/surge
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+asyncpg://surge:surge@postgres:5432/surge
+      PUBLIC_BASE_URL: http://localhost:8000
+    ports: ["8000:8000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    deploy:
+      resources:
+        limits: {cpus: "1.0", memory: 256M}
+    labels:
+      logging: alloy
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ./observability/prometheus:/etc/prometheus:ro
+    ports: ["9090:9090"]
+
+  loki:
+    image: grafana/loki:3.5.0
+    command: ["-config.file=/etc/loki/config.yml"]
+    volumes:
+      - ./observability/loki/config.yml:/etc/loki/config.yml:ro
+    ports: ["3100:3100"]
+
+  alloy:
+    image: grafana/alloy:v1.10.0
+    command: ["run", "/etc/alloy/config.alloy"]
+    volumes:
+      - ./observability/loki/alloy.river:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on: [loki]
+
+  grafana:
+    image: grafana/grafana:12.0.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3000:3000"]
+    depends_on: [prometheus, loki]
+
+  k6:
+    image: grafana/k6:1.1.0
+    profiles: ["load"]
+    user: "0:0"  # write the summary into the bind-mounted folder
+    volumes: ["./load:/load"]
+    environment:
+      BASE_URL: http://app:8000
+    entrypoint: ["k6", "run", "--summary-export=/load/results/summary.json"]
+    command: ["/load/spike.js"]
+
+volumes:
+  pgdata:

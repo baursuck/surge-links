@@ -1,0 +1,30 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Release.Name }}
+  labels: {{- include "surge-links.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Release.Name }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      selectPolicy: Max
+      policies:
+        - {type: Percent, value: 100, periodSeconds: 15}   # double every 15 s
+        - {type: Pods, value: 4, periodSeconds: 15}        # or +4 pods, whichever is more
+    scaleDown:
+      stabilizationWindowSeconds: 300                      # campaigns come in waves
+      policies:
+        - {type: Percent, value: 20, periodSeconds: 60}

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: surge-links
+description: Campaign short-link service built to survive traffic spikes
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

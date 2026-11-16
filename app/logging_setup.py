@@ -30,3 +30,5 @@ def setup_logging(level: str) -> None:
         lg = logging.getLogger(name)
         lg.handlers[:] = []
         lg.propagate = True
+    # One line per request at thousands of rps is noise and cost; metrics cover it.
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)

@@ -25,8 +25,8 @@ jobs:
     env:
       DATABASE_URL: postgresql+asyncpg://surge:surge@localhost:5432/surge
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
           cache: pip
@@ -40,8 +40,8 @@ jobs:
     name: terraform (fmt, validate, tests, lint, security scan)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: "~1.13"
       - run: terraform fmt -check -recursive infra/terraform
@@ -56,10 +56,10 @@ jobs:
             terraform -chdir="$dir" validate
             echo "::endgroup::"
           done
-      - uses: terraform-linters/setup-tflint@v5
+      - uses: terraform-linters/setup-tflint@ae78205cfffec9e8d93fd2b3115c7e9d3166d4b6 # v5
       - run: tflint --init --config "$PWD/.tflint.hcl" && tflint --recursive --config "$PWD/.tflint.hcl"
       - name: security scan (trivy config)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: config
           scan-ref: infra/terraform
@@ -71,20 +71,23 @@ jobs:
     name: helm (lint + schema check)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: azure/setup-helm@v4
-      - run: helm lint deploy/helm/surge-links
-      - name: kubeconform
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+      - run: helm lint deploy/helm/surge-links -f deploy/helm/surge-links/ci/test-values.yaml
+      - name: kubeconform (CRDs like ServiceMonitor are skipped, core objects are strict)
         run: |
-          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
-          helm template demo deploy/helm/surge-links | ./kubeconform -strict -summary
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz | tar xz
+          helm template demo deploy/helm/surge-links -f deploy/helm/surge-links/ci/test-values.yaml \
+            | ./kubeconform -strict -ignore-missing-schemas -summary
+      - name: chart refuses to render without a database
+        run: "! helm template demo deploy/helm/surge-links"
 
   e2e:
     name: e2e (compose, k6 smoke + spike, DR drill)
     runs-on: ubuntu-latest
     needs: [app]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: start stack
         run: |
           docker compose up -d --build postgres app prometheus
@@ -92,15 +95,40 @@ jobs:
           curl -sf localhost:8000/readyz
       - name: k6 smoke
         run: SCENARIO=smoke docker compose --profile load run --rm -e SCENARIO=smoke k6
-      - name: k6 spike (numbers are from a shared CI runner, not production hardware)
+      - name: k6 spike, fails the build if the SLO thresholds are crossed
+        # Shared CI runner, not production hardware: this guards regressions, it is not capacity.
         run: docker compose --profile load run --rm k6
-        continue-on-error: true
       - name: DR drill
         run: ./scripts/dr-drill.sh
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: k6-summary
           path: load/results/
       - if: failure()
         run: docker compose logs
+
+  image:
+    name: image (build and push to GHCR on main)
+    runs-on: ubuntu-latest
+    needs: [app, e2e]
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ github.sha }}
+            ghcr.io/${{ github.repository }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

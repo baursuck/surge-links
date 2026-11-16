@@ -14,7 +14,7 @@ test:          ## needs Postgres: `docker compose up -d --wait postgres`
 lint:
 	ruff check . && ruff format --check .
 	terraform fmt -check -recursive infra/terraform
-	helm lint deploy/helm/surge-links
+	helm lint deploy/helm/surge-links -f deploy/helm/surge-links/ci/test-values.yaml
 
 smoke:
 	SCENARIO=smoke docker compose --profile load run --rm -e SCENARIO=smoke k6

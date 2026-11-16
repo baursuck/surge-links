@@ -3,21 +3,38 @@ image:
   tag: ""            # defaults to .Chart.AppVersion
   pullPolicy: IfNotPresent
 
-# Real DATABASE_URL comes from a Secret (e.g. synced from Secrets Manager by External Secrets).
 database:
-  existingSecret: surge-links-db
+  # On AWS: no password at all. Pods log in as app_user with an IAM token (DB_IAM_AUTH).
+  # Fill host from the Terraform output `db_endpoint`.
+  url: ""          # e.g. postgresql+asyncpg://app_user@<db_endpoint>/surge_links
+  iamAuth: true
+  # Alternative for non-AWS clusters: take DATABASE_URL (with password) from a Secret.
+  existingSecret: ""
   secretKey: DATABASE_URL
+
+# POST /api/v1/links requires X-API-Key. The Secret is created outside the chart
+# (External Secrets / sealed secret), never stored in values.
+apiKey:
+  existingSecret: surge-links-api
+  secretKey: API_KEY
 
 config:
   PUBLIC_BASE_URL: https://go.example.com
+  AWS_REGION: eu-central-1
   DB_POOL_SIZE: "5"
   DB_MAX_OVERFLOW: "5"
   CLICK_FLUSH_INTERVAL_SECONDS: "1"
   LOG_LEVEL: INFO
 
 serviceAccount:
-  # IRSA: put the role ARN from the Terraform output `app_role_arn` here.
+  # IRSA: the Terraform output `app_role_arn` (allows rds-db:connect as app_user).
   roleArn: ""
+
+# Security groups for pods (VPC CNI): attach the Terraform output `app_security_group_id`,
+# the only source the database accepts.
+securityGroupPolicy:
+  enabled: false
+  securityGroupIds: []
 
 resources:
   requests: {cpu: 250m, memory: 128Mi}
@@ -30,8 +47,25 @@ autoscaling:
   maxReplicas: 20
   targetCPUUtilizationPercentage: 60
 
+podDisruptionBudget:
+  maxUnavailable: 1
+
 migrations:
   enabled: true
 
 service:
   port: 80
+
+ingress:
+  enabled: false
+  className: alb
+  host: go.example.com
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /readyz
+
+# Needs the Prometheus Operator CRDs in the cluster.
+serviceMonitor:
+  enabled: false
+  interval: 15s

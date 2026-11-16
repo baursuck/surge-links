@@ -1,0 +1,12 @@
+# Used by CI to render every optional template.
+database:
+  url: postgresql+asyncpg://app_user@db.example.internal:5432/surge_links
+serviceAccount:
+  roleArn: arn:aws:iam::111111111111:role/surge-links-dev-app
+securityGroupPolicy:
+  enabled: true
+  securityGroupIds: [sg-0123456789abcdef0]
+ingress:
+  enabled: true
+serviceMonitor:
+  enabled: true

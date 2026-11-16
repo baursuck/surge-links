@@ -16,7 +16,7 @@ spec:
   template:
     spec:
       restartPolicy: Never
-      # Default SA on purpose: the chart's SA does not exist yet during pre-install.
+      serviceAccountName: {{ .Release.Name }}  # IRSA: logs in to Postgres with an IAM token
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001

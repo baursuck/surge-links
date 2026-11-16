@@ -1,0 +1,14 @@
+{{- if .Values.securityGroupPolicy.enabled }}
+# Puts the pods into the `app` security group from Terraform: the only source the
+# database security group accepts on 5432.
+apiVersion: vpcresources.k8s.aws/v1beta1
+kind: SecurityGroupPolicy
+metadata:
+  name: {{ .Release.Name }}
+  labels: {{- include "surge-links.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "surge-links.selector" . | nindent 6 }}
+  securityGroups:
+    groupIds: {{- toYaml .Values.securityGroupPolicy.securityGroupIds | nindent 6 }}
+{{- end }}

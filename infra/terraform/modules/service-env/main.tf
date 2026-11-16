@@ -154,9 +154,15 @@ resource "aws_db_subnet_group" "this" {
 }
 
 resource "aws_db_parameter_group" "this" {
-  name   = "${local.name}-pg${var.db_engine_version}"
-  family = "postgres${var.db_engine_version}"
-  tags   = local.tags
+  # name_prefix + create_before_destroy: a major-version change creates the new group
+  # before the old one is detached, instead of failing on "group in use".
+  name_prefix = "${local.name}-pg${var.db_engine_version}-"
+  family      = "postgres${var.db_engine_version}"
+  tags        = local.tags
+
+  lifecycle {
+    create_before_destroy = true
+  }
 
   parameter {
     name         = "max_connections"
@@ -183,9 +189,11 @@ resource "aws_db_instance" "this" {
   instance_class = var.db_instance_class
 
   db_name  = replace(var.service, "-", "_")
-  username = "app"
+  username = "dbadmin"
   # Master password is generated and rotated by RDS in Secrets Manager: never in state.
-  manage_master_user_password = true
+  # Only humans and the day-0 bootstrap use it; pods log in as db_app_user via IAM auth.
+  manage_master_user_password         = true
+  iam_database_authentication_enabled = true
 
   allocated_storage     = var.db_allocated_storage_gb
   max_allocated_storage = var.db_allocated_storage_gb * 5
@@ -253,17 +261,24 @@ resource "aws_iam_role" "app" {
   tags               = local.tags
 }
 
-data "aws_iam_policy_document" "read_db_secret" {
+data "aws_caller_identity" "current" {}
+
+data "aws_region" "current" {}
+
+# Pods get a 15-minute IAM token instead of a password: nothing to rotate, nothing to leak.
+data "aws_iam_policy_document" "db_connect" {
   statement {
-    sid       = "ReadOwnDbSecretOnly"
-    actions   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
-    resources = [aws_db_instance.this.master_user_secret[0].secret_arn]
+    sid     = "ConnectAsAppUserOnly"
+    actions = ["rds-db:connect"]
+    resources = [
+      "arn:aws:rds-db:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:dbuser:${aws_db_instance.this.resource_id}/${var.db_app_user}"
+    ]
   }
 }
 
-resource "aws_iam_role_policy" "app_db_secret" {
+resource "aws_iam_role_policy" "app_db_connect" {
   count  = var.eks_oidc_provider_arn == null ? 0 : 1
-  name   = "read-db-secret"
+  name   = "rds-iam-connect"
   role   = aws_iam_role.app[0].id
-  policy = data.aws_iam_policy_document.read_db_secret.json
+  policy = data.aws_iam_policy_document.db_connect.json
 }

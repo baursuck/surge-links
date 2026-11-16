@@ -82,6 +82,11 @@ run "database_is_private_and_encrypted" {
     condition     = aws_db_instance.this.manage_master_user_password == true
     error_message = "master password must live in Secrets Manager, not in state"
   }
+
+  assert {
+    condition     = aws_db_instance.this.iam_database_authentication_enabled == true
+    error_message = "pods must be able to log in with IAM tokens instead of passwords"
+  }
 }
 
 run "subnets_do_not_overlap" {
@@ -121,8 +126,8 @@ run "irsa_role_created_for_cluster" {
   }
 
   assert {
-    condition     = length(aws_iam_role.app) == 1
-    error_message = "IRSA role expected when an OIDC provider is given"
+    condition     = length(aws_iam_role.app) == 1 && length(aws_iam_role_policy.app_db_connect) == 1
+    error_message = "IRSA role with rds-db:connect expected when an OIDC provider is given"
   }
 }
 

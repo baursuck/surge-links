@@ -28,8 +28,13 @@ output "db_name" {
   value       = aws_db_instance.this.db_name
 }
 
+output "db_app_user" {
+  description = "Postgres user the pods connect as (IAM authentication, no password)."
+  value       = var.db_app_user
+}
+
 output "db_secret_arn" {
-  description = "Secrets Manager ARN with the master credentials (rotated by RDS)."
+  description = "Secrets Manager ARN with the master credentials (rotated by RDS). For admins and day-0 bootstrap only."
   value       = aws_db_instance.this.master_user_secret[0].secret_arn
 }
 

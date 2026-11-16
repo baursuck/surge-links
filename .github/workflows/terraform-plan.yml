@@ -1,0 +1,62 @@
+name: terraform-plan
+
+# Posts `terraform plan` for every environment on PRs that touch infrastructure,
+# so infra changes are reviewed like code. Apply runs only from the protected
+# GitHub environment after approval.
+#
+# Disabled until real accounts exist: set repository variables
+# AWS_ACCOUNT_ID_DEV / AWS_ACCOUNT_ID_PROD to turn it on.
+
+on:
+  pull_request:
+    paths: ["infra/terraform/**"]
+
+permissions:
+  contents: read
+  id-token: write        # GitHub OIDC -> AWS, no stored keys
+  pull-requests: write   # comment the plan
+
+jobs:
+  plan:
+    strategy:
+      matrix:
+        env: [dev, prod]
+    runs-on: ubuntu-latest
+    env:
+      ACCOUNT_ID: ${{ matrix.env == 'dev' && vars.AWS_ACCOUNT_ID_DEV || vars.AWS_ACCOUNT_ID_PROD }}
+    steps:
+      - name: skip without a real account
+        if: env.ACCOUNT_ID == ''
+        run: echo "No AWS account configured for ${{ matrix.env }}; skipping plan."
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        if: env.ACCOUNT_ID != ''
+
+      - uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
+        if: env.ACCOUNT_ID != ''
+        with:
+          role-to-assume: arn:aws:iam::${{ env.ACCOUNT_ID }}:role/terraform-deployer
+          aws-region: eu-central-1
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        if: env.ACCOUNT_ID != ''
+        with:
+          terraform_version: "~1.13"
+
+      - name: plan
+        if: env.ACCOUNT_ID != ''
+        id: plan
+        working-directory: infra/terraform/envs/${{ matrix.env }}
+        run: |
+          terraform init -input=false
+          terraform plan -input=false -no-color -lock-timeout=60s -out=tfplan | tee plan.txt
+
+      - name: comment plan on the PR
+        if: env.ACCOUNT_ID != ''
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('infra/terraform/envs/${{ matrix.env }}/plan.txt', 'utf8');
+            const body = `### terraform plan: \`${{ matrix.env }}\`\n<details><summary>show</summary>\n\n\`\`\`\n${plan.slice(-60000)}\n\`\`\`\n</details>`;
+            await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });

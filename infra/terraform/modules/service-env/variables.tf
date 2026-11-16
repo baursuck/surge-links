@@ -19,7 +19,7 @@ variable "environment" {
 }
 
 variable "vpc_cidr" {
-  description = "CIDR for the service VPC. Must be /16-/20 so it can be split into 2x public + 2x private subnets."
+  description = "CIDR for the service VPC, /16 to /20. Split into 16 blocks: up to 3 public and 3 private subnets."
   type        = string
   default     = "10.20.0.0/16"
 
@@ -82,9 +82,15 @@ variable "db_backup_retention_days" {
 }
 
 variable "db_max_connections" {
-  description = "Postgres max_connections. Size it against HPA max replicas x per-pod pool (see docs/capacity.md)."
+  description = "Postgres max_connections. Size it against HPA max replicas x per-pod pool (docs/capacity.md) and instance memory (~10 MB per connection)."
   type        = number
-  default     = 200
+  default     = 100
+}
+
+variable "db_app_user" {
+  description = "Postgres user the pods log in as with IAM authentication (created once by scripts/db-bootstrap.sql)."
+  type        = string
+  default     = "app_user"
 }
 
 variable "eks_oidc_provider_arn" {

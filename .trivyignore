@@ -1,3 +1,6 @@
 # Accepted for this demo, see docs/tradeoffs.md:
 # AVD-AWS-0178  VPC flow logs are not enabled (cost); would be on in a real platform.
 AVD-AWS-0178
+# AVD-AWS-0057  wildcard actions in the day-0 deployer policy (bootstrap/aws-account): EC2/RDS
+#               resource ARNs are unknown before creation; IAM is scoped to the service prefix.
+AVD-AWS-0057

@@ -1,5 +1,7 @@
 # surge-links
 
+[![ci](https://github.com/baursuck/surge-links/actions/workflows/ci.yml/badge.svg)](https://github.com/baursuck/surge-links/actions/workflows/ci.yml)
+
 A short-link service for marketing campaigns, built to survive the traffic spike when an ad goes
 live. It is also a small platform blueprint: a reusable Terraform module, a Helm chart and an
 observability setup that another service can copy.
@@ -67,10 +69,11 @@ Numbers below come from CI (a shared GitHub Actions runner, app limited to 1 CPU
 design holds under a spike, not what production hardware would do.
 
 - [x] **Tests on Postgres 17** in CI
-- [x] **k6 spike**, 50 → 2 000 requests/s in 10 s, held for 60 s: **156 770 redirects, 0 errors,
-      p99 1.06 ms, p95 0.82 ms** (SLO: p99 < 100 ms, errors < 0.1%)
-- [x] **k6 smoke**: 98 662 redirects, 0 errors, p99 2.05 ms
-- [x] **DR drill**: backup → drop database → restore → data identical, **RTO 3 s** on a tiny
+- [x] **k6 spike**, 50 → 2 000 requests/s in 10 s, held for 60 s: **~156 770 redirects per run,
+      0 errors, p99 1.1–2.8 ms** across CI runs (SLO: p99 < 100 ms, errors < 0.1%).
+      The build fails if the thresholds are crossed.
+- [x] **k6 smoke**: ~98 000 redirects, 0 errors, p99 2–3.6 ms
+- [x] **DR drill**: backup → drop database → restore → data identical, **RTO 3–5 s** on a tiny
       dataset (RDS point-in-time restore takes minutes; see the runbook)
 - [x] Terraform: `fmt`, `validate`, module tests with a mocked provider, tflint, trivy
 - [ ] Grafana dashboard screenshot from a local run

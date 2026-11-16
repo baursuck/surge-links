@@ -76,7 +76,10 @@ design holds under a spike, not what production hardware would do.
 - [x] **DR drill**: backup → drop database → restore → data identical, **RTO 3–5 s** on a tiny
       dataset (RDS point-in-time restore takes minutes; see the runbook)
 - [x] Terraform: `fmt`, `validate`, module tests with a mocked provider, tflint, trivy
-- [ ] Grafana dashboard screenshot from a local run
+- [x] Local run on a laptop (Docker, app limited to 1 CPU): same spike, 0 errors, p99 0.95–1.2 ms.
+      Dashboard right after two spikes:
+
+![Grafana dashboard during a k6 spike](docs/img/dashboard.jpg)
 - **Terraform has never been applied to a real AWS account.** It is validated and tested
   against a mocked provider only, so no money was spent. Account IDs in `envs/` are placeholders,
   and `terraform-plan.yml` stays disabled until real accounts are configured.

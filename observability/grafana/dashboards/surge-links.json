@@ -172,7 +172,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "1 - (sum(increase(http_requests_total{route=\"/{code}\",status=~\"5..\"}[$__range])) / sum(increase(http_requests_total{route=\"/{code}\"}[$__range]))) / 0.001"
+          "expr": "1 - ((sum(increase(http_requests_total{route=\"/{code}\",status=~\"5..\"}[$__range])) or vector(0)) / sum(increase(http_requests_total{route=\"/{code}\"}[$__range]))) / 0.001"
         }
       ]
     },

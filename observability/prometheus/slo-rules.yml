@@ -10,21 +10,23 @@ groups:
         expr: sum(rate(http_requests_total{route="/{code}"}[5m]))
 
       # Error ratio over several windows; 404/410 are correct answers, only 5xx count.
+      # "or vector(0)": with no 5xx at all the numerator has no series and the ratio would be
+      # empty instead of 0 (it is still empty, correctly, when there is no traffic).
       - record: sli:redirect_errors:ratio_rate5m
         expr: |
-          sum(rate(http_requests_total{route="/{code}",status=~"5.."}[5m]))
+          (sum(rate(http_requests_total{route="/{code}",status=~"5.."}[5m])) or vector(0))
           / sum(rate(http_requests_total{route="/{code}"}[5m]))
       - record: sli:redirect_errors:ratio_rate30m
         expr: |
-          sum(rate(http_requests_total{route="/{code}",status=~"5.."}[30m]))
+          (sum(rate(http_requests_total{route="/{code}",status=~"5.."}[30m])) or vector(0))
           / sum(rate(http_requests_total{route="/{code}"}[30m]))
       - record: sli:redirect_errors:ratio_rate1h
         expr: |
-          sum(rate(http_requests_total{route="/{code}",status=~"5.."}[1h]))
+          (sum(rate(http_requests_total{route="/{code}",status=~"5.."}[1h])) or vector(0))
           / sum(rate(http_requests_total{route="/{code}"}[1h]))
       - record: sli:redirect_errors:ratio_rate6h
         expr: |
-          sum(rate(http_requests_total{route="/{code}",status=~"5.."}[6h]))
+          (sum(rate(http_requests_total{route="/{code}",status=~"5.."}[6h])) or vector(0))
           / sum(rate(http_requests_total{route="/{code}"}[6h]))
 
       # Share of redirects slower than 100 ms.

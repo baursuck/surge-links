@@ -12,7 +12,7 @@ async def create(client, **body):
 
 async def test_health(client):
     assert (await client.get("/healthz")).status_code == 200
-    assert (await client.get("/readyz")).json() == {"status": "ready"}
+    assert (await client.get("/readyz")).json() == {"status": "ready", "db": "ok"}
 
 
 async def test_create_and_redirect(client):

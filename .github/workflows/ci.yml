@@ -59,7 +59,7 @@ jobs:
       - uses: terraform-linters/setup-tflint@v5
       - run: tflint --init --config "$PWD/.tflint.hcl" && tflint --recursive --config "$PWD/.tflint.hcl"
       - name: security scan (trivy config)
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: infra/terraform
@@ -103,4 +103,4 @@ jobs:
           name: k6-summary
           path: load/results/
       - if: failure()
-        run: docker compose logs app
+        run: docker compose logs

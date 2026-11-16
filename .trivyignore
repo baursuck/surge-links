@@ -4,3 +4,6 @@ AVD-AWS-0178
 # AVD-AWS-0057  wildcard actions in the day-0 deployer policy (bootstrap/aws-account): EC2/RDS
 #               resource ARNs are unknown before creation; IAM is scoped to the service prefix.
 AVD-AWS-0057
+# AVD-AWS-0104  app pods may reach 0.0.0.0/0 on 443 only (AWS APIs via NAT, needed for IRSA/STS).
+#               Real account: VPC endpoints for STS/ECR, then point the rule at their SG.
+AVD-AWS-0104

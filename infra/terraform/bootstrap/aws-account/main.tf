@@ -45,12 +45,20 @@ resource "aws_s3_bucket_versioning" "tfstate" {
   }
 }
 
+# Own KMS key (not the AWS-managed one): key policy and CloudTrail decide who can read state.
+resource "aws_kms_key" "tfstate" {
+  description         = "Terraform state for ${var.service}"
+  enable_key_rotation = true
+}
+
 resource "aws_s3_bucket_server_side_encryption_configuration" "tfstate" {
   bucket = aws_s3_bucket.tfstate.id
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "aws:kms"
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.tfstate.arn
     }
+    bucket_key_enabled = true
   }
 }
 
@@ -145,6 +153,12 @@ data "aws_iam_policy_document" "deployer" {
     sid       = "State"
     actions   = ["s3:ListBucket", "s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
     resources = [aws_s3_bucket.tfstate.arn, "${aws_s3_bucket.tfstate.arn}/*"]
+  }
+
+  statement {
+    sid       = "StateKey"
+    actions   = ["kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey"]
+    resources = [aws_kms_key.tfstate.arn]
   }
 }
 

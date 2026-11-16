@@ -122,11 +122,24 @@ resource "aws_security_group" "app" {
   tags        = merge(local.tags, { Name = "${local.name}-app" })
 }
 
-resource "aws_vpc_security_group_egress_rule" "app_all" {
+resource "aws_vpc_security_group_egress_rule" "app_to_db" {
+  security_group_id            = aws_security_group.app.id
+  referenced_security_group_id = aws_security_group.db.id
+  ip_protocol                  = "tcp"
+  from_port                    = 5432
+  to_port                      = 5432
+  description                  = "Postgres"
+}
+
+# HTTPS only: AWS APIs (STS for IRSA) through the NAT gateway. With VPC endpoints for
+# STS/ECR this rule could point at the endpoint security group instead of 0.0.0.0/0.
+resource "aws_vpc_security_group_egress_rule" "app_https" {
   security_group_id = aws_security_group.app.id
-  ip_protocol       = "-1"
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
   cidr_ipv4         = "0.0.0.0/0"
-  description       = "Outbound to DB, AWS APIs and the internet via NAT"
+  description       = "HTTPS to AWS APIs via NAT"
 }
 
 resource "aws_security_group" "db" {

@@ -12,13 +12,14 @@ from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import func, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from . import metrics
 from .cache import TTLCache
 from .clicks import ClickBuffer
 from .config import Settings, settings
+from .db_auth import enable_rds_iam_auth
 from .logging_setup import setup_logging
 from .middleware import MetricsMiddleware
 from .models import Link, LinkClicksHourly
@@ -51,7 +52,10 @@ def create_app(cfg: Settings = settings) -> FastAPI:
             max_overflow=cfg.db_max_overflow,
             pool_pre_ping=True,
         )
+        if cfg.db_iam_auth:
+            enable_rds_iam_auth(engine.sync_engine, cfg.aws_region)
         app.state.engine = engine
+        app.state.db_seen_ok = False
         app.state.sessions = async_sessionmaker(engine, expire_on_commit=False)
         app.state.cache = TTLCache[CachedLink](cfg.cache_ttl_seconds, cfg.cache_max_items)
         app.state.inflight = {}  # code -> asyncio.Future, single-flight for cache misses
@@ -94,12 +98,18 @@ def create_app(cfg: Settings = settings) -> FastAPI:
         fut: asyncio.Future = asyncio.get_running_loop().create_future()
         inflight[code] = fut
         try:
-            async with request.app.state.sessions() as session:
-                row = (
-                    await session.execute(
-                        select(Link.id, Link.target_url, Link.expires_at).where(Link.code == code)
-                    )
-                ).first()
+            try:
+                async with request.app.state.sessions() as session:
+                    row = (
+                        await session.execute(
+                            select(Link.id, Link.target_url, Link.expires_at).where(
+                                Link.code == code
+                            )
+                        )
+                    ).first()
+            except (SQLAlchemyError, OSError) as exc:
+                # Cached links keep working; only cold codes fail, and with a retryable status.
+                raise HTTPException(status_code=503, detail="temporarily unavailable") from exc
             if row is None:
                 link = NOT_FOUND
                 cache.set(code, link, ttl=cfg.negative_cache_ttl_seconds)
@@ -121,14 +131,22 @@ def create_app(cfg: Settings = settings) -> FastAPI:
 
     @app.get("/readyz", include_in_schema=False)
     async def readyz(request: Request) -> dict:
-        # Short timeout: a slow DB should fail readiness fast, not hang the probe.
+        """Ready once the database has been reachable at least once.
+
+        After that, a database outage does NOT make pods unready: every pod would leave the
+        load balancer at the same moment and even cached redirects would stop. Instead the pod
+        keeps serving from cache, cold codes get 503, and alerts fire on the error budget.
+        """
         try:
             async with asyncio.timeout(cfg.db_ready_timeout_seconds):
                 async with request.app.state.engine.connect() as conn:
                     await conn.execute(text("SELECT 1"))
+            request.app.state.db_seen_ok = True
+            return {"status": "ready", "db": "ok"}
         except Exception as exc:
+            if request.app.state.db_seen_ok:
+                return {"status": "ready", "db": "unavailable"}
             raise HTTPException(status_code=503, detail="database unavailable") from exc
-        return {"status": "ready"}
 
     @app.get("/metrics", include_in_schema=False)
     async def prometheus_metrics() -> Response:

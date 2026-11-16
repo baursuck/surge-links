@@ -108,3 +108,20 @@ async def test_redirect_cache_hits(client):
     body = (await client.get("/metrics")).text
     assert 'redirect_cache_total{result="hit"}' in body
     assert "http_requests_total" in body
+
+
+async def test_ready_stays_up_when_db_drops_after_start(app, client):
+    assert (await client.get("/readyz")).json()["db"] == "ok"
+
+    class DownEngine:
+        def connect(self):
+            raise OSError("db down")
+
+    real = app.state.engine
+    app.state.engine = DownEngine()
+    try:
+        resp = await client.get("/readyz")
+        assert resp.status_code == 200
+        assert resp.json()["db"] == "unavailable"
+    finally:
+        app.state.engine = real

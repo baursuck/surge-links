@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import time
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -15,17 +16,23 @@ log = logging.getLogger(__name__)
 
 # Hot links get one UPDATE per flush instead of one per click, which removes row-lock
 # contention when a campaign link receives thousands of hits per second.
+# Many pods flush the same hot links: rows are locked in id order (FOR UPDATE ... ORDER BY)
+# so two concurrent flushes can wait for each other but never deadlock.
 # Explicit array casts: asyncpg cannot infer the element type of an untyped unnest().
 _UPDATE_TOTALS = text(
     """
+    WITH v AS (
+        SELECT id, sum(n) AS n
+          FROM unnest(CAST(:ids AS bigint[]), CAST(:ns AS bigint[])) AS u(id, n)
+         GROUP BY id
+    ), locked AS (
+        SELECT l.id FROM links l JOIN v ON v.id = l.id ORDER BY l.id FOR UPDATE OF l
+    )
     UPDATE links AS l
        SET clicks = l.clicks + v.n
-      FROM (
-            SELECT id, sum(n) AS n
-              FROM unnest(CAST(:ids AS bigint[]), CAST(:ns AS bigint[])) AS u(id, n)
-             GROUP BY id
-           ) AS v
+      FROM v
      WHERE l.id = v.id
+       AND l.id IN (SELECT id FROM locked)
     """
 )
 
@@ -41,6 +48,7 @@ _UPSERT_HOURLY = text(
              CAST(:ns AS bigint[])
            ) AS v(id, hour, n)
       JOIN links l ON l.id = v.id
+     ORDER BY v.id, v.hour  -- same lock order on every pod
     ON CONFLICT (link_id, hour)
     DO UPDATE SET clicks = link_clicks_hourly.clicks + EXCLUDED.clicks
     """
@@ -80,7 +88,7 @@ class ClickBuffer:
             if not self._counts:
                 return 0
             batch, self._counts = self._counts, defaultdict(int)
-            keys = list(batch.keys())
+            keys = sorted(batch.keys())
             params = {
                 "ids": [k[0] for k in keys],
                 "hours": [k[1] for k in keys],
@@ -107,7 +115,9 @@ class ClickBuffer:
     async def _run(self) -> None:
         while not self._stopping.is_set():
             try:
-                await asyncio.wait_for(self._stopping.wait(), timeout=self._interval)
+                # +-20% jitter so pods do not all flush in the same millisecond.
+                timeout = self._interval * random.uniform(0.8, 1.2)
+                await asyncio.wait_for(self._stopping.wait(), timeout=timeout)
             except TimeoutError:
                 pass
             try:

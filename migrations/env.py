@@ -4,6 +4,7 @@ from alembic import context
 from sqlalchemy import create_engine, pool
 
 from app.config import settings, sync_database_url
+from app.db_auth import enable_rds_iam_auth
 from app.models import Base
 
 target_metadata = Base.metadata
@@ -21,6 +22,8 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     engine = create_engine(sync_database_url(settings.database_url), poolclass=pool.NullPool)
+    if settings.db_iam_auth:
+        enable_rds_iam_auth(engine, settings.aws_region)
     with engine.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():

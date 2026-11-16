@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     db_pool_size: int = 5
     db_max_overflow: int = 5
     db_ready_timeout_seconds: float = 1.0
+    # On AWS: log in as the IAM-authenticated DB user (DATABASE_URL has no password).
+    db_iam_auth: bool = False
+    aws_region: str = "eu-central-1"
 
     # Short links are built from this, not from the Host header (wrong behind ALB/ingress).
     public_base_url: str = "http://localhost:8000"
